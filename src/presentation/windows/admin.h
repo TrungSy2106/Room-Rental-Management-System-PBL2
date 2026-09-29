@@ -21,6 +21,7 @@ class Payment;
 class Contract;
 class Account;
 class RoomType;
+class RoomLayoutPage;
 
 class Admin : public QMainWindow
 {
@@ -146,6 +147,7 @@ private:
     Ui::Admin *ui;
     QPropertyAnimation *animation;
     QChartView *chartview = nullptr;
+    RoomLayoutPage *roomLayoutPage = nullptr;
 };
 
 #endif // ADMIN_H

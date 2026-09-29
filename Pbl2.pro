@@ -8,6 +8,7 @@ INCLUDEPATH += \
     $$PWD/src/core \
     $$PWD/src/domain \
     $$PWD/src/presentation/pages/admin \
+    $$PWD/src/presentation/pages/admin/roomlayout \
     $$PWD/src/presentation/pages/user \
     $$PWD/src/presentation/dialogs \
     $$PWD/src/presentation/statistics \
@@ -37,6 +38,18 @@ SOURCES += \
     src/presentation/pages/admin/ServicePage.cpp \
     src/presentation/pages/admin/StatisticsPage.cpp \
     src/presentation/pages/admin/TenantPage.cpp \
+    src/presentation/pages/admin/roomlayout/AxisGraphicsItem.cpp \
+    src/presentation/pages/admin/roomlayout/CommandStack.cpp \
+    src/presentation/pages/admin/roomlayout/FloorPlanCommands.cpp \
+    src/presentation/pages/admin/roomlayout/FloorPlanDocument.cpp \
+    src/presentation/pages/admin/roomlayout/FloorPlanRepository.cpp \
+    src/presentation/pages/admin/roomlayout/GripItem.cpp \
+    src/presentation/pages/admin/roomlayout/RoomLabelGraphicsItem.cpp \
+    src/presentation/pages/admin/roomlayout/RoomLayoutPage.cpp \
+    src/presentation/pages/admin/roomlayout/RoomLayoutView.cpp \
+    src/presentation/pages/admin/roomlayout/SymbolGraphicsItem.cpp \
+    src/presentation/pages/admin/roomlayout/TextAnnotationItem.cpp \
+    src/presentation/pages/admin/roomlayout/WallGraphicsItem.cpp \
     src/presentation/pages/user/UserContractPage.cpp \
     src/presentation/pages/user/UserDashboardPage.cpp \
     src/presentation/pages/user/UserPaymentPage.cpp \
@@ -72,6 +85,18 @@ HEADERS += \
     src/domain/Service.h \
     src/domain/ServiceUsage.h \
     src/domain/Tenant.h \
+    src/presentation/pages/admin/roomlayout/AxisGraphicsItem.h \
+    src/presentation/pages/admin/roomlayout/CommandStack.h \
+    src/presentation/pages/admin/roomlayout/FloorPlanCommands.h \
+    src/presentation/pages/admin/roomlayout/FloorPlanDocument.h \
+    src/presentation/pages/admin/roomlayout/FloorPlanRepository.h \
+    src/presentation/pages/admin/roomlayout/GripItem.h \
+    src/presentation/pages/admin/roomlayout/RoomLabelGraphicsItem.h \
+    src/presentation/pages/admin/roomlayout/RoomLayoutPage.h \
+    src/presentation/pages/admin/roomlayout/RoomLayoutView.h \
+    src/presentation/pages/admin/roomlayout/SymbolGraphicsItem.h \
+    src/presentation/pages/admin/roomlayout/TextAnnotationItem.h \
+    src/presentation/pages/admin/roomlayout/WallGraphicsItem.h \
     src/presentation/dialogs/AddService.h \
     src/presentation/dialogs/Addroom.h \
     src/presentation/dialogs/Addroomtype.h \
@@ -102,6 +127,7 @@ FORMS += \
     src/presentation/dialogs/Edittenant.ui \
     src/presentation/dialogs/Extend.ui \
     src/presentation/dialogs/Paybill.ui \
+    src/presentation/pages/admin/roomlayout/RoomLayoutPage.ui \
     src/presentation/windows/Signin.ui \
     src/presentation/windows/User.ui \
     src/presentation/windows/admin.ui
@@ -119,6 +145,7 @@ RESOURCES += \
 DEMO_DATA_FILES = \
     $$PWD/data/Account.txt \
     $$PWD/data/Contract.txt \
+    $$PWD/data/FloorPlanGeometry.txt \
     $$PWD/data/Payment.txt \
     $$PWD/data/Reservation.txt \
     $$PWD/data/Room.txt \

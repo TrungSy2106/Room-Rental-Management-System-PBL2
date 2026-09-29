@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RoomLayoutPage</class>
+ <widget class="QWidget" name="RoomLayoutPage">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>1200</width><height>800</height></rect>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">#RoomLayoutPage { background-color: #1f1f1f; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="pageLayout">
+   <property name="spacing"><number>12</number></property>
+   <property name="leftMargin"><number>28</number></property>
+   <property name="topMargin"><number>20</number></property>
+   <property name="rightMargin"><number>28</number></property>
+   <property name="bottomMargin"><number>24</number></property>
+
+   <!-- Header row -->
+   <item>
+    <layout class="QHBoxLayout" name="headerRow" stretch="0">
+     <item>
+      <widget class="QLabel" name="titleLabel">
+       <property name="text"><string>Room Floor Plan</string></property>
+       <property name="styleSheet"><string notr="true">color:#f5f5f5; font-size:17pt; font-weight:bold;</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="headerSpacer1">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeType"><enum>QSizePolicy::Fixed</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>18</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="flLbl">
+       <property name="text"><string>Floor:</string></property>
+       <property name="styleSheet"><string notr="true">color:#d0d0d0;font-size:13px;</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="floorSelector">
+       <property name="minimumSize"><size><width>100</width><height>0</height></size></property>
+       <property name="styleSheet"><string notr="true">QComboBox{background:#343434;color:white;border:1px solid #555;border-radius:5px;padding:6px 10px;}QComboBox QAbstractItemView{background:white;color:#222;}</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="addFloorButton">
+       <property name="text"><string>Add Floor</string></property>
+       <property name="styleSheet"><string notr="true">QPushButton{background:#343434;color:white;border:1px solid #666;border-radius:6px;padding:7px 14px;}QPushButton:hover{background:#454545;}</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="headerStretch">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="editorStatusLabel">
+       <property name="text"><string/></property>
+       <property name="styleSheet"><string notr="true">color:#9fddc2;</string></property>
+       <property name="visible"><bool>false</bool></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="editModeButton">
+       <property name="text"><string>Edit Layout</string></property>
+       <property name="checkable"><bool>true</bool></property>
+       <property name="styleSheet"><string notr="true">QPushButton{background:#343434;color:white;border:1px solid #666;border-radius:6px;padding:7px 14px;}QPushButton:checked{background:#2e8b68;border-color:#2e8b68;}</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="resetBtn">
+       <property name="text"><string>Reset View</string></property>
+       <property name="styleSheet"><string notr="true">QPushButton{background:#fff;color:#232323;border:none;border-radius:6px;padding:7px 14px;}QPushButton:hover{background:#e9ecef;}</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="headerSpacer2">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeType"><enum>QSizePolicy::Fixed</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>12</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="roomCountLabel">
+       <property name="text"><string/></property>
+       <property name="styleSheet"><string notr="true">color:#d0d0d0;font-size:13px;</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <!-- Editor toolbar (hidden until Edit Mode is active) -->
+   <item>
+    <widget class="QWidget" name="editorControls">
+     <property name="visible"><bool>false</bool></property>
+     <property name="styleSheet"><string notr="true">QWidget{background:#292929;border-radius:6px;}QPushButton{background:#444;color:white;border:1px solid #555;border-radius:5px;padding:5px 7px;}QPushButton:checked{background:#2e8b68;border-color:#45c997;}QPushButton:disabled{color:#777;background:#333;}QComboBox{background:white;color:#222;border-radius:5px;padding:5px;}</string></property>
+     <layout class="QHBoxLayout" name="edLayout">
+      <property name="leftMargin"><number>10</number></property>
+      <property name="topMargin"><number>8</number></property>
+      <property name="rightMargin"><number>10</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+      <property name="spacing"><number>6</number></property>
+      <item><widget class="QPushButton" name="selectButton"><property name="text"><string>Select</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item><widget class="QPushButton" name="drawWallButton"><property name="text"><string>Draw Wall</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item><widget class="QPushButton" name="orthoButton"><property name="text"><string>ORTHO: OFF</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item><widget class="QPushButton" name="osnapButton"><property name="text"><string>OSNAP: OFF</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item>
+       <widget class="QFrame" name="sep1">
+        <property name="frameShape"><enum>QFrame::VLine</enum></property>
+        <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+        <property name="styleSheet"><string notr="true">color:#555;</string></property>
+       </widget>
+      </item>
+      <item><widget class="QPushButton" name="doorButton"><property name="text"><string>Door</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item><widget class="QPushButton" name="stairButton"><property name="text"><string>Stair</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item><widget class="QPushButton" name="textButton"><property name="text"><string>Text</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item>
+       <widget class="QFrame" name="sep2">
+        <property name="frameShape"><enum>QFrame::VLine</enum></property>
+        <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+        <property name="styleSheet"><string notr="true">color:#555;</string></property>
+       </widget>
+      </item>
+      <item><widget class="QPushButton" name="hAxisButton"><property name="text"><string>H Axis</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item><widget class="QPushButton" name="vAxisButton"><property name="text"><string>V Axis</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item>
+       <widget class="QFrame" name="sep3">
+        <property name="frameShape"><enum>QFrame::VLine</enum></property>
+        <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+        <property name="styleSheet"><string notr="true">color:#555;</string></property>
+       </widget>
+      </item>
+      <item><widget class="QComboBox" name="roomSelector"><property name="minimumSize"><size><width>90</width><height>0</height></size></property></widget></item>
+      <item><widget class="QPushButton" name="placeRoomButton"><property name="text"><string>Assign Room</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+      <item><widget class="QPushButton" name="unassignRoomButton"><property name="text"><string>Unassign</string></property></widget></item>
+      <item>
+       <widget class="QFrame" name="sep4">
+        <property name="frameShape"><enum>QFrame::VLine</enum></property>
+        <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+        <property name="styleSheet"><string notr="true">color:#555;</string></property>
+       </widget>
+      </item>
+      <item><widget class="QPushButton" name="deleteButton"><property name="text"><string>Delete</string></property></widget></item>
+      <item><widget class="QPushButton" name="undoButton"><property name="text"><string>Undo</string></property></widget></item>
+      <item><widget class="QPushButton" name="redoButton"><property name="text"><string>Redo</string></property></widget></item>
+      <item><widget class="QPushButton" name="saveButton"><property name="text"><string>Save</string></property></widget></item>
+      <item>
+       <spacer name="editorStretch">
+        <property name="orientation"><enum>Qt::Horizontal</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+       </spacer>
+      </item>
+     </layout>
+    </widget>
+   </item>
+
+   <!-- Legend bar: static hint labels here; colored legend items added dynamically in .cpp -->
+   <item>
+    <layout class="QHBoxLayout" name="legendRow" stretch="0">
+     <item>
+      <widget class="QWidget" name="legendItemsContainer">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+         <horstretch>0</horstretch><verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="legendStretch">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="hintLabel">
+       <property name="text"><string>Wheel:Zoom | Mid/Right:Pan | F3:OSNAP | F8:ORTHO | H/V Axis:2-click</string></property>
+       <property name="styleSheet"><string notr="true">color:#a9a9a9;</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="rotateHintLabel">
+       <property name="text"><string>Shortcuts: Ctrl+C/V Copy/Paste | R Rotate Door/Stair</string></property>
+       <property name="styleSheet"><string notr="true">color:#00a3cc;</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <!-- Floor plan view (promoted from QGraphicsView) -->
+   <item>
+    <widget class="RoomLayoutView" name="view">
+     <property name="styleSheet"><string notr="true">border-radius:12px;background:#f7f9fb;</string></property>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch><verstretch>1</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+
+  </layout>
+ </widget>
+
+ <customwidgets>
+  <customwidget>
+   <class>RoomLayoutView</class>
+   <extends>QGraphicsView</extends>
+   <header>RoomLayoutView.h</header>
+   <container>0</container>
+  </customwidget>
+ </customwidgets>
+
+ <resources/>
+ <connections/>
+</ui>
