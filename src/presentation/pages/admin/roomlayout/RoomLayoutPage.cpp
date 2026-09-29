@@ -2,6 +2,7 @@
 #include "ui_RoomLayoutPage.h"
 
 #include "AxisGraphicsItem.h"
+#include "FloorPlanCommands.h"
 #include "FloorPlanRepository.h"
 #include "Room.h"
 #include "RoomLabelGraphicsItem.h"
@@ -40,6 +41,12 @@ enum class SceneItemKind { None, Wall, RoomLabel, Symbol, Text, Axis };
 struct SceneItemInfo {
     SceneItemKind kind = SceneItemKind::None;
     QString id;
+
+    bool isDeletable() const
+    {
+        return kind == SceneItemKind::Wall || kind == SceneItemKind::Symbol
+               || kind == SceneItemKind::Text || kind == SceneItemKind::Axis;
+    }
 };
 
 SceneItemInfo inspectSceneItem(QGraphicsItem *item)
@@ -68,6 +75,26 @@ void setSceneItemEditable(QGraphicsItem *item, bool editable)
     default: break;
     }
 }
+
+QVector<SceneItemInfo> selectedSceneItemInfos(QGraphicsScene *scene)
+{
+    QVector<SceneItemInfo> selected;
+    if (!scene) return selected;
+    const auto items = scene->selectedItems();
+    selected.reserve(items.size());
+    for (QGraphicsItem *item : items)
+        selected.append(inspectSceneItem(item));
+    return selected;
+}
+}
+
+template <typename Command, typename... Args>
+void RoomLayoutPage::pushCommand(Args &&...args)
+{
+    undoStack.push(std::make_unique<Command>(
+        &document,
+        std::forward<Args>(args)...,
+        [this]() { renderFloor(currentFloor()); }));
 }
 
 RoomLayoutPage::RoomLayoutPage(QWidget *parent)
@@ -106,11 +133,23 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
     connect(ui->placeRoomButton,&QPushButton::clicked, this, [this](){setTool(FloorPlanTool::PlaceRoomLabel);});
     connect(ui->deleteButton,        &QPushButton::clicked, this, &RoomLayoutPage::deleteSelectedItems);
     connect(ui->unassignRoomButton,  &QPushButton::clicked, this, &RoomLayoutPage::unassignSelectedRoomLabel);
+    connect(ui->undoButton,  &QPushButton::clicked, this, [this]{ undoStack.undo(); });
+    connect(ui->redoButton,  &QPushButton::clicked, this, [this]{ undoStack.redo(); });
     connect(ui->saveButton,  &QPushButton::clicked, this, &RoomLayoutPage::saveLayout);
     connect(ui->floorSelector, &QComboBox::currentIndexChanged, this, [this](int){
         renderFloor(currentFloor(), true);});
     connect(scene, &QGraphicsScene::selectionChanged,
             this, &RoomLayoutPage::updateSelectionActions);
+
+    undoStack.setOnChange([this]() {
+        updateEditorStatus();
+        if (!documentLoaded || undoStack.isClean() || autosaveScheduled) return;
+        autosaveScheduled = true;
+        QTimer::singleShot(0, this, [this]() {
+            autosaveScheduled = false;
+            if (!undoStack.isClean()) saveLayout();
+        });
+    });
 
     ui->view->setWallCreatedHandler([this](QPointF s, QPointF e){ addWall(s, e); });
     ui->view->setRoomLabelPositionHandler([this](QPointF p){ placeRoomLabel(p); });
@@ -123,12 +162,12 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
     const auto sc=[this](QKeySequence seq, std::function<void()> fn){
         auto *s=new QShortcut(seq,this); s->setContext(Qt::WidgetWithChildrenShortcut);
         connect(s, &QShortcut::activated, this, [this, fn=std::move(fn)](){ if(editMode) fn(); });};
+    sc(QKeySequence::Undo,   [this](){ undoStack.undo(); });
+    sc(QKeySequence::Redo,   [this](){ undoStack.redo(); });
     sc(QKeySequence(Qt::Key_Delete), [this](){ deleteSelectedItems(); });
     sc(QKeySequence(Qt::CTRL | Qt::Key_A), [this](){
         for(auto *item : scene->items()){
-            if(inspectSceneItem(item).kind != SceneItemKind::None
-               && inspectSceneItem(item).kind != SceneItemKind::RoomLabel)
-                item->setSelected(true);
+            if(inspectSceneItem(item).isDeletable()) item->setSelected(true);
         }
     });
     sc(QKeySequence(Qt::Key_Escape), [this](){
@@ -136,6 +175,7 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
         if(currentTool != FloorPlanTool::Select) setTool(FloorPlanTool::Select);});
 
     ui->deleteButton->setEnabled(false); ui->unassignRoomButton->setEnabled(false);
+    ui->undoButton->setEnabled(false);   ui->redoButton->setEnabled(false);
     reloadRooms();
 }
 
@@ -172,16 +212,15 @@ void RoomLayoutPage::loadFloorPlan()
         bool demoMissing = false;
         if (!FloorPlanRepository(DemoDataFile).load(
                 &loaded, &demoMissing, &err) || demoMissing) {
-            if (!err.isEmpty()) {
+            if (!err.isEmpty())
                 QMessageBox::warning(this, QStringLiteral("Load"), err);
-            }
             loaded.clear();
         }
         document = loaded;
     } else {
         document = loaded;
     }
-    documentLoaded=true;
+    documentLoaded=true; undoStack.clear(); undoStack.setClean();
 }
 
 int RoomLayoutPage::currentFloor() const
@@ -206,9 +245,7 @@ void RoomLayoutPage::refreshRoomSelector()
     LinkedList<Room>::Node *cur=Room::roomList.begin();
     while (cur) {
         const QString id = QString::fromStdString(cur->data.getID());
-        if (!placed.contains(id)) {
-            ui->roomSelector->addItem(id, id);
-        }
+        if (!placed.contains(id)) ui->roomSelector->addItem(id, id);
         cur = cur->next;
     }
     const int idx=ui->roomSelector->findData(prev);
@@ -306,8 +343,7 @@ void RoomLayoutPage::addWall(const QPointF &s, const QPointF &e)
 {
     WallRecord w; w.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
     w.floor=currentFloor(); w.start=s; w.end=e;
-    document.addWall(w);
-    renderFloor(currentFloor());
+    pushCommand<DrawWallCommand>(w);
 }
 
 void RoomLayoutPage::placeRoomLabel(const QPointF &pos)
@@ -315,8 +351,7 @@ void RoomLayoutPage::placeRoomLabel(const QPointF &pos)
     const QString id=ui->roomSelector->currentData().toString();
     if(id.isEmpty()){ QMessageBox::information(this,QStringLiteral("Assign Room"),QStringLiteral("No unassigned room.")); return; }
     RoomLabelRecord l; l.floor=currentFloor(); l.roomId=id; l.position=pos;
-    document.setRoomLabel(l);
-    renderFloor(currentFloor());
+    pushCommand<PlaceRoomLabelCommand>(l);
     setTool(FloorPlanTool::Select);
 }
 
@@ -324,8 +359,7 @@ void RoomLayoutPage::placeSymbol(SymbolType type, const QPointF &pos)
 {
     SymbolRecord s; s.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
     s.floor=currentFloor(); s.type=type; s.position=pos;
-    document.addSymbol(s);
-    renderFloor(currentFloor());
+    pushCommand<PlaceSymbolCommand>(s);
 }
 
 void RoomLayoutPage::placeTextAnnotation(const QPointF &pos)
@@ -336,8 +370,7 @@ void RoomLayoutPage::placeTextAnnotation(const QPointF &pos)
     if(!ok||txt.isEmpty()) return;
     TextRecord t; t.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
     t.floor=currentFloor(); t.position=pos; t.text=txt;
-    document.addText(t);
-    renderFloor(currentFloor());
+    pushCommand<PlaceTextAnnotationCommand>(t);
     setTool(FloorPlanTool::Select);
 }
 
@@ -349,30 +382,65 @@ void RoomLayoutPage::placeAxis(AxisDirection dir, const QPointF &start, const QP
     a.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     a.floor = currentFloor(); a.direction = dir;
     a.start = start; a.end = end; a.label = label;
-    document.addAxis(a);
-    renderFloor(currentFloor());
+    pushCommand<PlaceAxisCommand>(a);
+}
+
+void RoomLayoutPage::handleItemsMoved(QVector<QGraphicsItem *> items, QPointF delta)
+{
+    if(items.isEmpty()||delta.manhattanLength()<0.01) return;
+    QVector<ItemMoveRecord> moves;
+    const int floor=currentFloor();
+    for(auto *item:items){
+        const SceneItemInfo info = inspectSceneItem(item);
+        if(info.kind == SceneItemKind::Wall){
+            WallRecord r; if(!document.findWall(info.id,&r)) continue;
+            ItemMoveRecord m; m.type=ItemMoveRecord::Type::Wall; m.id=r.id;
+            m.oldS=r.start; m.oldE=r.end; m.newS=r.start+delta; m.newE=r.end+delta;
+            moves<<m;
+        } else if(info.kind == SceneItemKind::Axis){
+            AxisRecord r; if(!document.findAxis(info.id,&r)) continue;
+            ItemMoveRecord m; m.type=ItemMoveRecord::Type::Axis; m.id=r.id;
+            m.oldS=r.start; m.oldE=r.end;
+            if(r.direction==AxisDirection::Horizontal){ m.newS=r.start+QPointF(delta.x(),0); m.newE=r.end+QPointF(delta.x(),0); }
+            else                                       { m.newS=r.start+QPointF(0,delta.y()); m.newE=r.end+QPointF(0,delta.y()); }
+            moves<<m;
+        } else if(info.kind == SceneItemKind::Symbol){
+            SymbolRecord r; if(!document.findSymbol(info.id,&r)) continue;
+            ItemMoveRecord m; m.type=ItemMoveRecord::Type::Symbol; m.id=r.id;
+            m.oldPos=r.position; m.newPos=r.position+delta; moves<<m;
+        } else if(info.kind == SceneItemKind::Text){
+            TextRecord r; if(!document.findText(info.id,&r)) continue;
+            ItemMoveRecord m; m.type=ItemMoveRecord::Type::Text; m.id=r.id;
+            m.oldPos=r.position; m.newPos=r.position+delta; moves<<m;
+        } else if(info.kind == SceneItemKind::RoomLabel){
+            RoomLabelRecord r; if(!document.findRoomLabel(info.id,&r)||r.floor!=floor) continue;
+            ItemMoveRecord m; m.type=ItemMoveRecord::Type::RoomLabel; m.id=r.roomId;
+            m.oldPos=r.position; m.newPos=r.position+delta; moves<<m;
+        }
+    }
+    if(moves.isEmpty()) return;
+    pushCommand<MoveItemsCommand>(moves);
 }
 
 void RoomLayoutPage::deleteSelectedItems()
 {
-    bool changed = false;
-    for(QGraphicsItem *item : scene->selectedItems()){
-        const SceneItemInfo info = inspectSceneItem(item);
-        if(info.kind == SceneItemKind::Wall)        { document.removeWall(info.id);   changed = true; }
-        else if(info.kind == SceneItemKind::Symbol) { document.removeSymbol(info.id); changed = true; }
-        else if(info.kind == SceneItemKind::Text)   { document.removeText(info.id);   changed = true; }
-        else if(info.kind == SceneItemKind::Axis)   { document.removeAxis(info.id);   changed = true; }
+    QVector<WallRecord> w; QVector<SymbolRecord> s; QVector<TextRecord> t; QVector<AxisRecord> a;
+    for(const SceneItemInfo &info : selectedSceneItemInfos(scene)){
+        if(info.kind == SceneItemKind::Wall)        { WallRecord   r; if(document.findWall(info.id,&r))   w<<r; }
+        else if(info.kind == SceneItemKind::Symbol) { SymbolRecord r; if(document.findSymbol(info.id,&r)) s<<r; }
+        else if(info.kind == SceneItemKind::Text)   { TextRecord   r; if(document.findText(info.id,&r))   t<<r; }
+        else if(info.kind == SceneItemKind::Axis)   { AxisRecord   r; if(document.findAxis(info.id,&r))   a<<r; }
     }
-    if(changed) renderFloor(currentFloor());
+    if(w.isEmpty()&&s.isEmpty()&&t.isEmpty()&&a.isEmpty()) return;
+    pushCommand<DeleteEditablesCommand>(w, s, t, a);
 }
 
 void RoomLayoutPage::unassignSelectedRoomLabel()
 {
-    for(QGraphicsItem *item : scene->selectedItems()){
-        const SceneItemInfo info = inspectSceneItem(item);
+    for(const SceneItemInfo &info : selectedSceneItemInfos(scene)){
         if(info.kind != SceneItemKind::RoomLabel) continue;
-        document.removeRoomLabel(info.id);
-        renderFloor(currentFloor());
+        RoomLabelRecord r; if(!document.findRoomLabel(info.id,&r)) continue;
+        pushCommand<UnassignRoomLabelCommand>(r);
         return;
     }
 }
@@ -392,15 +460,15 @@ void RoomLayoutPage::saveLayout()
     QString err;
     if(!FloorPlanRepository(layoutDataFilePath()).save(document,&err)){
         QMessageBox::warning(this,QStringLiteral("Save"),err); return; }
+    undoStack.setClean();
 }
 
 QString RoomLayoutPage::layoutDataFilePath() const
 {
     const QString dataDirectory =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (!dataDirectory.isEmpty() && QDir().mkpath(dataDirectory)) {
+    if (!dataDirectory.isEmpty() && QDir().mkpath(dataDirectory))
         return QDir(dataDirectory).filePath(DemoDataFile);
-    }
     return QDir::current().filePath(DemoDataFile);
 }
 
@@ -415,18 +483,18 @@ void RoomLayoutPage::updateEditorStatus()
         currentTool==FloorPlanTool::PlaceHAxis    ?QStringLiteral("H AXIS"):
         currentTool==FloorPlanTool::PlaceVAxis    ?QStringLiteral("V AXIS"):
                                                    QStringLiteral("SELECT");
-    ui->editorStatusLabel->setText(QStringLiteral("%1 | Unsaved").arg(tool));
-    ui->saveButton->setEnabled(editMode);
+    const QString st=undoStack.isClean()?QStringLiteral("Saved"):QStringLiteral("Unsaved");
+    ui->editorStatusLabel->setText(QStringLiteral("%1 | %2").arg(tool,st));
+    ui->undoButton->setEnabled(undoStack.canUndo()); ui->redoButton->setEnabled(undoStack.canRedo());
+    ui->saveButton->setEnabled(!undoStack.isClean());
 }
 
 void RoomLayoutPage::updateSelectionActions()
 {
     if (!editMode || currentTool != FloorPlanTool::Select) return;
     bool hasDeletable = false, hasRoomLabel = false;
-    for(QGraphicsItem *item : scene->selectedItems()){
-        const SceneItemInfo info = inspectSceneItem(item);
-        hasDeletable |= (info.kind==SceneItemKind::Wall||info.kind==SceneItemKind::Symbol
-                         ||info.kind==SceneItemKind::Text||info.kind==SceneItemKind::Axis);
+    for(const SceneItemInfo &info : selectedSceneItemInfos(scene)){
+        hasDeletable |= info.isDeletable();
         hasRoomLabel |= info.kind == SceneItemKind::RoomLabel;
     }
     ui->deleteButton->setEnabled(hasDeletable);
@@ -473,30 +541,4 @@ void RoomLayoutPage::setViewOnlyMode()
 {
     ui->editModeButton->hide();
     ui->addFloorButton->hide();
-}
-
-void RoomLayoutPage::handleItemsMoved(QVector<QGraphicsItem *> items, QPointF delta)
-{
-    if (items.isEmpty() || delta.manhattanLength() < 0.01) return;
-    const int floor = currentFloor();
-    for (auto *item : items) {
-        const SceneItemInfo info = inspectSceneItem(item);
-        if (info.kind == SceneItemKind::Wall) {
-            WallRecord r; if (!document.findWall(info.id, &r)) continue;
-            document.updateWall(info.id, r.start + delta, r.end + delta);
-        } else if (info.kind == SceneItemKind::Symbol) {
-            SymbolRecord r; if (!document.findSymbol(info.id, &r)) continue;
-            document.updateSymbolPos(info.id, r.position + delta);
-        } else if (info.kind == SceneItemKind::Text) {
-            TextRecord r; if (!document.findText(info.id, &r)) continue;
-            document.updateTextPos(info.id, r.position + delta);
-        } else if (info.kind == SceneItemKind::Axis) {
-            AxisRecord r; if (!document.findAxis(info.id, &r)) continue;
-            document.updateAxis(info.id, r.start + delta, r.end + delta);
-        } else if (info.kind == SceneItemKind::RoomLabel) {
-            RoomLabelRecord r; if (!document.findRoomLabel(info.id, &r) || r.floor != floor) continue;
-            document.updateRoomLabelPos(info.id, r.position + delta);
-        }
-    }
-    renderFloor(floor);
 }

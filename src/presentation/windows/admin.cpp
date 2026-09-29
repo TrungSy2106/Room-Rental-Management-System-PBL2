@@ -10,6 +10,7 @@
 #include "Contract.h"
 #include "Payment.h"
 #include "Account.h"
+#include "RoomLayoutPage.h"
 
 using namespace std;
 
@@ -18,6 +19,55 @@ Admin::Admin(QWidget *parent)
     , ui(new Ui::Admin)
 {
     ui->setupUi(this);
+
+    roomLayoutPage = new RoomLayoutPage(this);
+    ui->stackedWidget->addWidget(roomLayoutPage);
+
+    QIcon roomLayoutIcon;
+    roomLayoutIcon.addFile(QStringLiteral(":/new/prefix1/Resources/Room.png"),
+                           QSize(),
+                           QIcon::Normal,
+                           QIcon::Off);
+    roomLayoutIcon.addFile(QStringLiteral(":/new/prefix1/Resources/Room1.png"),
+                           QSize(),
+                           QIcon::Normal,
+                           QIcon::On);
+
+    auto *compactLayoutButton = new QPushButton(ui->MI_AD);
+    compactLayoutButton->setObjectName(QStringLiteral("RoomLayoutButtonCompact"));
+    compactLayoutButton->setToolTip(QStringLiteral("Room Floor Plan"));
+    compactLayoutButton->setIcon(roomLayoutIcon);
+    compactLayoutButton->setIconSize(QSize(30, 18));
+    compactLayoutButton->setMinimumHeight(30);
+    compactLayoutButton->setCheckable(true);
+    compactLayoutButton->setAutoExclusive(true);
+    compactLayoutButton->setStyleSheet(QStringLiteral(
+        "QPushButton { border: none; }"
+        "QPushButton:checked { background: white; border-radius: 3px; }"));
+    ui->verticalLayout_2->addWidget(compactLayoutButton);
+
+    auto *expandedLayoutButton = new QPushButton(QStringLiteral("Room Floor Plan"), ui->MIT_AD);
+    expandedLayoutButton->setObjectName(QStringLiteral("RoomLayoutButton"));
+    expandedLayoutButton->setToolTip(QStringLiteral("Room Floor Plan"));
+    expandedLayoutButton->setIcon(roomLayoutIcon);
+    expandedLayoutButton->setIconSize(QSize(24, 18));
+    expandedLayoutButton->setMinimumSize(186, 30);
+    expandedLayoutButton->setCheckable(true);
+    expandedLayoutButton->setAutoExclusive(true);
+    expandedLayoutButton->setStyleSheet(QStringLiteral(
+        "QPushButton { color: white; border: none; text-align: left; padding-left: 20px; }"
+        "QPushButton:checked { color: #3fd391; background: white; border-radius: 3px; }"));
+    ui->verticalLayout_4->addWidget(expandedLayoutButton);
+
+    const auto showRoomLayout = [this, compactLayoutButton, expandedLayoutButton]() {
+        roomLayoutPage->reloadRooms();
+        ui->stackedWidget->setCurrentWidget(roomLayoutPage);
+        compactLayoutButton->setChecked(true);
+        expandedLayoutButton->setChecked(true);
+    };
+    connect(compactLayoutButton, &QPushButton::clicked, this, showRoomLayout);
+    connect(expandedLayoutButton, &QPushButton::clicked, this, showRoomLayout);
+
     ui->Accbtn->setText(QString::fromStdString("    " + Account::currentTenantID));
     ui->MI_AD->setHidden(true);
     managerooms();
