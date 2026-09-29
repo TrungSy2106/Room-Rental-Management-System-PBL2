@@ -117,6 +117,8 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
     ui->view->setSymbolPlacedHandler([this](SymbolType t, QPointF p){ placeSymbol(t, p); });
     ui->view->setTextPositionHandler([this](QPointF p){ placeTextAnnotation(p); });
     ui->view->setAxisCreatedHandler([this](AxisDirection d, QPointF s, QPointF e){ placeAxis(d, s, e); });
+    ui->view->setItemsMovedHandler([this](QVector<QGraphicsItem*> items, QPointF delta){
+        handleItemsMoved(items, delta);});
 
     const auto sc=[this](QKeySequence seq, std::function<void()> fn){
         auto *s=new QShortcut(seq,this); s->setContext(Qt::WidgetWithChildrenShortcut);
@@ -232,11 +234,25 @@ void RoomLayoutPage::renderFloor(int floor, bool doResetView)
         scene->addItem(item);
     }
 
+    QVector<WallRecord> floorWalls;
     for(const WallRecord &w:document.walls()){
         if(w.floor!=floor) continue;
         auto *item=new WallGraphicsItem(w); item->setEditable(editMode&&currentTool==FloorPlanTool::Select);
         scene->addItem(item);
+        floorWalls << w;
     }
+
+    QVector<SnapCandidate> candidates;
+    for(const WallRecord &w : floorWalls){
+        candidates << SnapCandidate{w.start, SnapType::Endpoint};
+        candidates << SnapCandidate{w.end,   SnapType::Endpoint};
+        candidates << SnapCandidate{(w.start + w.end) * 0.5, SnapType::Midpoint};
+    }
+    ui->view->setSnapPoints(candidates);
+
+    QVector<QPair<QPointF,QPointF>> segs;
+    for(const WallRecord &w : floorWalls) segs << qMakePair(w.start, w.end);
+    ui->view->setWallSegments(segs);
 
     int cnt=0;
     for(const RoomLabelRecord &l:document.roomLabels()){
@@ -457,4 +473,30 @@ void RoomLayoutPage::setViewOnlyMode()
 {
     ui->editModeButton->hide();
     ui->addFloorButton->hide();
+}
+
+void RoomLayoutPage::handleItemsMoved(QVector<QGraphicsItem *> items, QPointF delta)
+{
+    if (items.isEmpty() || delta.manhattanLength() < 0.01) return;
+    const int floor = currentFloor();
+    for (auto *item : items) {
+        const SceneItemInfo info = inspectSceneItem(item);
+        if (info.kind == SceneItemKind::Wall) {
+            WallRecord r; if (!document.findWall(info.id, &r)) continue;
+            document.updateWall(info.id, r.start + delta, r.end + delta);
+        } else if (info.kind == SceneItemKind::Symbol) {
+            SymbolRecord r; if (!document.findSymbol(info.id, &r)) continue;
+            document.updateSymbolPos(info.id, r.position + delta);
+        } else if (info.kind == SceneItemKind::Text) {
+            TextRecord r; if (!document.findText(info.id, &r)) continue;
+            document.updateTextPos(info.id, r.position + delta);
+        } else if (info.kind == SceneItemKind::Axis) {
+            AxisRecord r; if (!document.findAxis(info.id, &r)) continue;
+            document.updateAxis(info.id, r.start + delta, r.end + delta);
+        } else if (info.kind == SceneItemKind::RoomLabel) {
+            RoomLabelRecord r; if (!document.findRoomLabel(info.id, &r) || r.floor != floor) continue;
+            document.updateRoomLabelPos(info.id, r.position + delta);
+        }
+    }
+    renderFloor(floor);
 }

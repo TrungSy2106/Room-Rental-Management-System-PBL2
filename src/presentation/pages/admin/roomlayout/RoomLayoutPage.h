@@ -4,6 +4,8 @@
 #include "FloorPlanDocument.h"
 #include "RoomLayoutView.h"
 
+#include <QVector>
+
 #include <QColor>
 #include <QVector>
 #include <QWidget>
@@ -34,6 +36,7 @@ private:
     void placeSymbol(SymbolType type, const QPointF &position);
     void placeTextAnnotation(const QPointF &position);
     void placeAxis(AxisDirection dir, const QPointF &start, const QPointF &end);
+    void handleItemsMoved(QVector<QGraphicsItem *> items, QPointF delta);
     void addFloor();
     void saveLayout();
     QString layoutDataFilePath() const;
