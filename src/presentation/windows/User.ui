@@ -303,6 +303,45 @@ border-radius:3px;
           </widget>
          </item>
          <item>
+          <widget class="QPushButton" name="floorPlanBtnIcon">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>30</height>
+            </size>
+           </property>
+           <property name="cursor">
+            <cursorShape>ArrowCursor</cursorShape>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton:checked{
+background-color:white;
+border-radius:3px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="Resources.qrc">
+             <normaloff>:/new/prefix1/Resources/dashboard.png</normaloff>
+             <normalon>:/new/prefix1/Resources/dashboard1.png</normalon>:/new/prefix1/Resources/dashboard.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>30</width>
+             <height>18</height>
+            </size>
+           </property>
+           <property name="checkable">
+            <bool>true</bool>
+           </property>
+           <property name="autoExclusive">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QPushButton" name="Accountbtn1">
            <property name="maximumSize">
             <size>
@@ -656,6 +695,54 @@ border-radius:3px;
            <property name="iconSize">
             <size>
              <width>120</width>
+             <height>18</height>
+            </size>
+           </property>
+           <property name="checkable">
+            <bool>true</bool>
+           </property>
+           <property name="autoExclusive">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="floorPlanBtn">
+           <property name="minimumSize">
+            <size>
+             <width>186</width>
+             <height>30</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>30</height>
+            </size>
+           </property>
+           <property name="cursor">
+            <cursorShape>ArrowCursor</cursorShape>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+padding-left :-30px
+}
+QPushButton:checked{
+background-color:white;
+border-radius:3px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="Resources.qrc">
+             <normaloff>:/new/prefix1/Resources/dashboardbig.png</normaloff>
+             <normalon>:/new/prefix1/Resources/dashboardbig1.png</normalon>:/new/prefix1/Resources/dashboardbig.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>115</width>
              <height>18</height>
             </size>
            </property>

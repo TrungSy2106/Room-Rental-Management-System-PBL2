@@ -7,6 +7,7 @@ class Room;
 class Service;
 class Payment;
 class Contract;
+class RoomLayoutPage;
 
 namespace Ui {
 class User;
@@ -30,6 +31,7 @@ public:
     void AccandNotipopup();
     void showprofile();
     void showmyroom();
+    void showFloorPlan();
     void searchroom();
     void searchSer();
     static void updateAllFile();
@@ -87,6 +89,7 @@ private slots:
 
 private:
     Ui::User *ui;
+    RoomLayoutPage *floorPlanPage = nullptr;
 };
 
 #endif // USER_H

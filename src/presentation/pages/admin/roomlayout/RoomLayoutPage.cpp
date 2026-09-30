@@ -296,64 +296,17 @@ void RoomLayoutPage::renderFloor(int floor, bool doResetView)
     LinkedList<Room>::Node *cur=Room::roomList.begin();
     while(cur){ rById.insert(QString::fromStdString(cur->data.getID()),&cur->data); cur=cur->next; }
 
-    QVector<QPointF> hPts, vPts;
     for(const AxisRecord &a:document.axes()){
         if(a.floor!=floor) continue;
         auto *item=new AxisGraphicsItem(a); item->setEditable(editMode&&currentTool==FloorPlanTool::Select);
         scene->addItem(item);
-        if(a.direction==AxisDirection::Horizontal) hPts<<QPointF(0,a.start.y());
-        else                                        vPts<<QPointF(a.start.x(),0);
     }
 
-    QVector<WallRecord> floorWalls;
     for(const WallRecord &w:document.walls()){
         if(w.floor!=floor) continue;
         auto *item=new WallGraphicsItem(w); item->setEditable(editMode&&currentTool==FloorPlanTool::Select);
         scene->addItem(item);
-        floorWalls << w;
     }
-
-    QVector<SnapCandidate> candidates;
-
-    for(const WallRecord &w : floorWalls){
-        candidates << SnapCandidate{w.start, SnapType::Endpoint};
-        candidates << SnapCandidate{w.end,   SnapType::Endpoint};
-    }
-
-    for(const WallRecord &w : floorWalls){
-        candidates << SnapCandidate{(w.start + w.end) * 0.5, SnapType::Midpoint};
-    }
-
-    for(int i=0; i<floorWalls.size(); ++i){
-        const QPointF &p1=floorWalls[i].start, &p2=floorWalls[i].end;
-        const QPointF d1=p2-p1;
-        for(int j=i+1; j<floorWalls.size(); ++j){
-            const QPointF &p3=floorWalls[j].start, &p4=floorWalls[j].end;
-            const QPointF d2=p4-p3;
-            const qreal denom = d1.x()*d2.y() - d1.y()*d2.x();
-            if(qAbs(denom) < 1e-9) continue;
-            const QPointF dp=p3-p1;
-            const qreal t=(dp.x()*d2.y()-dp.y()*d2.x())/denom;
-            const qreal u=(dp.x()*d1.y()-dp.y()*d1.x())/denom;
-            if(t>=-0.01&&t<=1.01&&u>=-0.01&&u<=1.01)
-                candidates << SnapCandidate{p1 + t*d1, SnapType::Intersection};
-        }
-    }
-
-    for(const QPointF &h:hPts) for(const QPointF &v:vPts)
-        candidates << SnapCandidate{QPointF(v.x(),h.y()), SnapType::Intersection};
-
-    for(const AxisRecord &a:document.axes()) if(a.floor==floor){
-        candidates << SnapCandidate{a.start, SnapType::Endpoint};
-        candidates << SnapCandidate{a.end,   SnapType::Endpoint};
-    }
-
-    ui->view->setSnapPoints(candidates);
-
-    QVector<QPair<QPointF,QPointF>> segs;
-    segs.reserve(floorWalls.size());
-    for(const WallRecord &w : floorWalls) segs << qMakePair(w.start, w.end);
-    ui->view->setWallSegments(segs);
 
     int cnt=0;
     for(const RoomLabelRecord &l:document.roomLabels()){

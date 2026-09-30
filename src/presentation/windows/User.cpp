@@ -30,6 +30,7 @@ User::User(QWidget *parent)
     showprofile();
     showlist();
     showmyroom();
+    showFloorPlan();
     ui->ID->setText("ID: " + QString::fromStdString(Account::currentTenantID));
     // connect(ui->listWidget, &QListWidget::clicked, this, &User::on_listWidget_clicked);
     connect(ui->LineEditSearchRoom, &QLineEdit::textChanged, this, &User::searchroom);

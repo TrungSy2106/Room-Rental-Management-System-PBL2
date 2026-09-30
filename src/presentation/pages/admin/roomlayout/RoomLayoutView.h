@@ -2,6 +2,7 @@
 #define ROOMLAYOUTVIEW_H
 
 #include "FloorPlanDocument.h"
+#include "GripItem.h"
 
 #include <QGraphicsView>
 #include <QGraphicsSimpleTextItem>
@@ -24,12 +25,7 @@ enum class FloorPlanTool {
 
 enum class SnapType { Endpoint, Midpoint, Intersection, Perpendicular };
 
-struct SnapCandidate {
-    QPointF  point;
-    SnapType type;
-};
-
-enum class ViewDragState { None, PotentialItemMove, ItemMove };
+enum class ViewDragState { None, GripDrag, PotentialItemMove, ItemMove };
 
 class RoomLayoutView : public QGraphicsView
 {
@@ -39,8 +35,8 @@ public:
     void resetView();
     void setEditorEnabled(bool enabled);
     void setTool(FloorPlanTool tool);
-    void setSnapPoints(const QVector<SnapCandidate> &candidates);
-    void setWallSegments(const QVector<QPair<QPointF,QPointF>> &segs);
+    void setOrthoEnabled(bool enabled);
+    void setOsnapEnabled(bool enabled);
     void cancelTransient();
 
     void setWallCreatedHandler(std::function<void(QPointF, QPointF)>);
@@ -48,7 +44,11 @@ public:
     void setSymbolPlacedHandler(std::function<void(SymbolType, QPointF)>);
     void setTextPositionHandler(std::function<void(QPointF)>);
     void setAxisCreatedHandler(std::function<void(AxisDirection, QPointF, QPointF)>);
+
+    void setGripReleasedHandler(std::function<void(QString ownerId, GripOwnerType, bool isStart, QPointF newPos)>);
     void setItemsMovedHandler(std::function<void(QVector<QGraphicsItem*>, QPointF delta)>);
+
+    void setRequestMoveHandler(std::function<void()>);
 
 protected:
     void drawBackground(QPainter *, const QRectF &) override;
@@ -60,6 +60,11 @@ protected:
     void keyPressEvent(QKeyEvent *) override;
 
 private:
+    QPointF acquirePoint(QPointF rawScenePos, bool *snapped);
+    QPointF acquirePointFrom(QPointF rawScenePos, QPointF refPoint, bool *snapped,
+                             bool hasReference = true);
+    QPointF constrainAxisGrip(const GripItem *grip, QPointF rawScenePos) const;
+    QPointF constrainMoveDelta(QPointF delta) const;
     QVector<QGraphicsItem *> selectedMovableItems() const;
     void updateDragMode();
     void stopPanning();
@@ -70,9 +75,9 @@ private:
     void showSnapMarker(QPointF pos, bool visible);
 
     bool editorEnabled = false;
+    bool orthoEnabled  = false;
+    bool osnapEnabled  = false;
     FloorPlanTool tool = FloorPlanTool::Select;
-    QVector<SnapCandidate>          snapCandidates;
-    QVector<QPair<QPointF,QPointF>> wallSegs;
 
     bool    hasFirstPoint = false;
     QPointF firstPoint;
@@ -82,21 +87,29 @@ private:
     QGraphicsSimpleTextItem *snapMarkerText  = nullptr;
     SnapType                 snapMarkerType  = SnapType::Endpoint;
 
-    bool    isPanning = false;
+    bool    isPanning       = false;
     QPoint lastPanPosition;
 
-    ViewDragState            dragState        = ViewDragState::None;
-    QPoint                   dragStartViewPos;
-    QPointF                  dragStartScenePos;
-    QVector<QGraphicsItem *> dragItems;
-    QVector<QPointF>         dragItemsOldPos;
+    ViewDragState             dragState        = ViewDragState::None;
+    GripItem                 *activeGrip       = nullptr;
+    QPoint                    dragStartViewPos;
+    QPointF                   dragStartScenePos;
+    QVector<QGraphicsItem *>  dragItems;
+    QVector<QPointF>          dragItemsOldPos;
 
-    std::function<void(QPointF, QPointF)>                    wallCreatedHandler;
-    std::function<void(QPointF)>                             roomLabelPositionHandler;
-    std::function<void(SymbolType, QPointF)>                 symbolPlacedHandler;
-    std::function<void(QPointF)>                             textPositionHandler;
-    std::function<void(AxisDirection, QPointF, QPointF)>     axisCreatedHandler;
-    std::function<void(QVector<QGraphicsItem*>, QPointF)>    itemsMovedHandler;
+    bool                      moveHasBase      = false;
+    QPointF                   moveBasePoint;
+    QVector<QGraphicsItem *>  moveSelectedItems;
+    QGraphicsLineItem        *moveGuideItem    = nullptr;
+
+    std::function<void(QPointF, QPointF)>                        wallCreatedHandler;
+    std::function<void(QPointF)>                                 roomLabelPositionHandler;
+    std::function<void(SymbolType, QPointF)>                     symbolPlacedHandler;
+    std::function<void(QPointF)>                                 textPositionHandler;
+    std::function<void(AxisDirection, QPointF, QPointF)>         axisCreatedHandler;
+    std::function<void(QString, GripOwnerType, bool, QPointF)>   gripReleasedHandler;
+    std::function<void(QVector<QGraphicsItem*>, QPointF)>        itemsMovedHandler;
+    std::function<void()>                                        requestMoveHandler;
 };
 
 #endif

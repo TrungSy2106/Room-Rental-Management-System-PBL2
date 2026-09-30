@@ -55,6 +55,7 @@ SOURCES += \
     src/presentation/pages/user/UserPaymentPage.cpp \
     src/presentation/pages/user/UserProfilePage.cpp \
     src/presentation/pages/user/UserRoomBookingPage.cpp \
+    src/presentation/pages/user/UserFloorPlanPage.cpp \
     src/presentation/pages/user/UserServicePage.cpp \
     src/presentation/dialogs/AddService.cpp \
     src/presentation/dialogs/Addroom.cpp \
@@ -149,6 +150,7 @@ DEMO_DATA_FILES = \
     $$PWD/data/Payment.txt \
     $$PWD/data/Reservation.txt \
     $$PWD/data/Room.txt \
+    $$PWD/data/RoomLayout.txt \
     $$PWD/data/RoomType.txt \
     $$PWD/data/Service.txt \
     $$PWD/data/ServiceUsage.txt \
