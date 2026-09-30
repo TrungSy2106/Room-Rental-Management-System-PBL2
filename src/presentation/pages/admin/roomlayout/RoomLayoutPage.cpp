@@ -4,6 +4,7 @@
 #include "AxisGraphicsItem.h"
 #include "FloorPlanCommands.h"
 #include "FloorPlanRepository.h"
+#include "GripItem.h"
 #include "Room.h"
 #include "RoomLabelGraphicsItem.h"
 #include "SymbolGraphicsItem.h"
@@ -36,7 +37,7 @@ namespace {
 constexpr qreal SceneW = 1140.0, SceneH = 700.0;
 const QString DemoDataFile = QStringLiteral("FloorPlanGeometry.txt");
 
-enum class SceneItemKind { None, Wall, RoomLabel, Symbol, Text, Axis };
+enum class SceneItemKind { None, Grip, Wall, RoomLabel, Symbol, Text, Axis };
 
 struct SceneItemInfo {
     SceneItemKind kind = SceneItemKind::None;
@@ -51,6 +52,7 @@ struct SceneItemInfo {
 
 SceneItemInfo inspectSceneItem(QGraphicsItem *item)
 {
+    if (dynamic_cast<GripItem *>(item)) return {SceneItemKind::Grip, {}};
     if (auto *wall = dynamic_cast<WallGraphicsItem *>(item))
         return {SceneItemKind::Wall, wall->id()};
     if (auto *label = dynamic_cast<RoomLabelGraphicsItem *>(item))
@@ -80,6 +82,7 @@ QVector<SceneItemInfo> selectedSceneItemInfos(QGraphicsScene *scene)
 {
     QVector<SceneItemInfo> selected;
     if (!scene) return selected;
+
     const auto items = scene->selectedItems();
     selected.reserve(items.size());
     for (QGraphicsItem *item : items)
@@ -131,6 +134,12 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
     connect(ui->hAxisButton,    &QPushButton::clicked, this, [this](){setTool(FloorPlanTool::PlaceHAxis);});
     connect(ui->vAxisButton,    &QPushButton::clicked, this, [this](){setTool(FloorPlanTool::PlaceVAxis);});
     connect(ui->placeRoomButton,&QPushButton::clicked, this, [this](){setTool(FloorPlanTool::PlaceRoomLabel);});
+    connect(ui->orthoButton, &QPushButton::toggled, this, [this](bool on){
+        ui->orthoButton->setText(on ? QStringLiteral("ORTHO: ON") : QStringLiteral("ORTHO: OFF"));
+        ui->view->setOrthoEnabled(on); updateEditorStatus();});
+    connect(ui->osnapButton, &QPushButton::toggled, this, [this](bool on){
+        ui->osnapButton->setText(on ? QStringLiteral("OSNAP: ON") : QStringLiteral("OSNAP: OFF"));
+        ui->view->setOsnapEnabled(on); updateEditorStatus();});
     connect(ui->deleteButton,        &QPushButton::clicked, this, &RoomLayoutPage::deleteSelectedItems);
     connect(ui->unassignRoomButton,  &QPushButton::clicked, this, &RoomLayoutPage::unassignSelectedRoomLabel);
     connect(ui->undoButton,  &QPushButton::clicked, this, [this]{ undoStack.undo(); });
@@ -140,10 +149,10 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
         renderFloor(currentFloor(), true);});
     connect(scene, &QGraphicsScene::selectionChanged,
             this, &RoomLayoutPage::updateSelectionActions);
-
     undoStack.setOnChange([this]() {
         updateEditorStatus();
         if (!documentLoaded || undoStack.isClean() || autosaveScheduled) return;
+
         autosaveScheduled = true;
         QTimer::singleShot(0, this, [this]() {
             autosaveScheduled = false;
@@ -156,14 +165,21 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
     ui->view->setSymbolPlacedHandler([this](SymbolType t, QPointF p){ placeSymbol(t, p); });
     ui->view->setTextPositionHandler([this](QPointF p){ placeTextAnnotation(p); });
     ui->view->setAxisCreatedHandler([this](AxisDirection d, QPointF s, QPointF e){ placeAxis(d, s, e); });
+    ui->view->setGripReleasedHandler([this](QString id, GripOwnerType ot, bool isSt, QPointF pos){
+        handleGripReleased(id, ot, isSt, pos);});
     ui->view->setItemsMovedHandler([this](QVector<QGraphicsItem*> items, QPointF delta){
         handleItemsMoved(items, delta);});
-
+    ui->view->setRequestMoveHandler([this](){
+        setTool(FloorPlanTool::Select);});
     const auto sc=[this](QKeySequence seq, std::function<void()> fn){
         auto *s=new QShortcut(seq,this); s->setContext(Qt::WidgetWithChildrenShortcut);
         connect(s, &QShortcut::activated, this, [this, fn=std::move(fn)](){ if(editMode) fn(); });};
-    sc(QKeySequence::Undo,   [this](){ undoStack.undo(); });
-    sc(QKeySequence::Redo,   [this](){ undoStack.redo(); });
+    sc(QKeySequence(Qt::Key_F3), [this](){ ui->osnapButton->toggle(); });
+    sc(QKeySequence(Qt::Key_F8), [this](){ ui->orthoButton->toggle(); });
+    sc(QKeySequence::Undo, [this](){ undoStack.undo(); });
+    sc(QKeySequence::Redo, [this](){ undoStack.redo(); });
+    sc(QKeySequence::Copy,  [this](){ copySelectedItems(); });
+    sc(QKeySequence::Paste, [this](){ pasteCopiedItems(); });
     sc(QKeySequence(Qt::Key_Delete), [this](){ deleteSelectedItems(); });
     sc(QKeySequence(Qt::CTRL | Qt::Key_A), [this](){
         for(auto *item : scene->items()){
@@ -173,6 +189,17 @@ RoomLayoutPage::RoomLayoutPage(QWidget *parent)
     sc(QKeySequence(Qt::Key_Escape), [this](){
         ui->view->cancelTransient(); scene->clearSelection();
         if(currentTool != FloorPlanTool::Select) setTool(FloorPlanTool::Select);});
+    sc(QKeySequence(Qt::Key_R), [this](){
+        QVector<QPair<QString, qreal>> changes;
+        for(const SceneItemInfo &info : selectedSceneItemInfos(scene)){
+            if(info.kind == SceneItemKind::Symbol){
+                SymbolRecord r; if(document.findSymbol(info.id, &r))
+                    changes.append({r.id, r.rotation + 90.0});
+            }
+        }
+        if(!changes.isEmpty())
+            pushCommand<RotateSymbolsCommand>(changes);
+    });
 
     ui->deleteButton->setEnabled(false); ui->unassignRoomButton->setEnabled(false);
     ui->undoButton->setEnabled(false);   ui->redoButton->setEnabled(false);
@@ -212,8 +239,9 @@ void RoomLayoutPage::loadFloorPlan()
         bool demoMissing = false;
         if (!FloorPlanRepository(DemoDataFile).load(
                 &loaded, &demoMissing, &err) || demoMissing) {
-            if (!err.isEmpty())
+            if (!err.isEmpty()) {
                 QMessageBox::warning(this, QStringLiteral("Load"), err);
+            }
             loaded.clear();
         }
         document = loaded;
@@ -245,7 +273,9 @@ void RoomLayoutPage::refreshRoomSelector()
     LinkedList<Room>::Node *cur=Room::roomList.begin();
     while (cur) {
         const QString id = QString::fromStdString(cur->data.getID());
-        if (!placed.contains(id)) ui->roomSelector->addItem(id, id);
+        if (!placed.contains(id)) {
+            ui->roomSelector->addItem(id, id);
+        }
         cur = cur->next;
     }
     const int idx=ui->roomSelector->findData(prev);
@@ -254,6 +284,7 @@ void RoomLayoutPage::refreshRoomSelector()
 
 void RoomLayoutPage::renderFloor(int floor, bool doResetView)
 {
+    activeGrips.clear();
     ui->view->cancelTransient();
     {
         const QSignalBlocker blocker(scene);
@@ -265,10 +296,13 @@ void RoomLayoutPage::renderFloor(int floor, bool doResetView)
     LinkedList<Room>::Node *cur=Room::roomList.begin();
     while(cur){ rById.insert(QString::fromStdString(cur->data.getID()),&cur->data); cur=cur->next; }
 
+    QVector<QPointF> hPts, vPts;
     for(const AxisRecord &a:document.axes()){
         if(a.floor!=floor) continue;
         auto *item=new AxisGraphicsItem(a); item->setEditable(editMode&&currentTool==FloorPlanTool::Select);
         scene->addItem(item);
+        if(a.direction==AxisDirection::Horizontal) hPts<<QPointF(0,a.start.y());
+        else                                        vPts<<QPointF(a.start.x(),0);
     }
 
     QVector<WallRecord> floorWalls;
@@ -280,14 +314,44 @@ void RoomLayoutPage::renderFloor(int floor, bool doResetView)
     }
 
     QVector<SnapCandidate> candidates;
+
     for(const WallRecord &w : floorWalls){
         candidates << SnapCandidate{w.start, SnapType::Endpoint};
         candidates << SnapCandidate{w.end,   SnapType::Endpoint};
+    }
+
+    for(const WallRecord &w : floorWalls){
         candidates << SnapCandidate{(w.start + w.end) * 0.5, SnapType::Midpoint};
     }
+
+    for(int i=0; i<floorWalls.size(); ++i){
+        const QPointF &p1=floorWalls[i].start, &p2=floorWalls[i].end;
+        const QPointF d1=p2-p1;
+        for(int j=i+1; j<floorWalls.size(); ++j){
+            const QPointF &p3=floorWalls[j].start, &p4=floorWalls[j].end;
+            const QPointF d2=p4-p3;
+            const qreal denom = d1.x()*d2.y() - d1.y()*d2.x();
+            if(qAbs(denom) < 1e-9) continue;
+            const QPointF dp=p3-p1;
+            const qreal t=(dp.x()*d2.y()-dp.y()*d2.x())/denom;
+            const qreal u=(dp.x()*d1.y()-dp.y()*d1.x())/denom;
+            if(t>=-0.01&&t<=1.01&&u>=-0.01&&u<=1.01)
+                candidates << SnapCandidate{p1 + t*d1, SnapType::Intersection};
+        }
+    }
+
+    for(const QPointF &h:hPts) for(const QPointF &v:vPts)
+        candidates << SnapCandidate{QPointF(v.x(),h.y()), SnapType::Intersection};
+
+    for(const AxisRecord &a:document.axes()) if(a.floor==floor){
+        candidates << SnapCandidate{a.start, SnapType::Endpoint};
+        candidates << SnapCandidate{a.end,   SnapType::Endpoint};
+    }
+
     ui->view->setSnapPoints(candidates);
 
     QVector<QPair<QPointF,QPointF>> segs;
+    segs.reserve(floorWalls.size());
     for(const WallRecord &w : floorWalls) segs << qMakePair(w.start, w.end);
     ui->view->setWallSegments(segs);
 
@@ -380,9 +444,30 @@ void RoomLayoutPage::placeAxis(AxisDirection dir, const QPointF &start, const QP
     if (label.isEmpty()) return;
     AxisRecord a;
     a.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    a.floor = currentFloor(); a.direction = dir;
-    a.start = start; a.end = end; a.label = label;
+    a.floor = currentFloor();
+    a.direction = dir;
+    a.start = start;
+    a.end = end;
+    a.label = label;
+
     pushCommand<PlaceAxisCommand>(a);
+}
+
+void RoomLayoutPage::handleGripReleased(const QString &ownerId, GripOwnerType ownerType, bool isStart, const QPointF &newPos)
+{
+    if(ownerType==GripOwnerType::Wall){
+        WallRecord rec; if(!document.findWall(ownerId,&rec)) return;
+        const QPointF ns=isStart?newPos:rec.start, ne=isStart?rec.end:newPos;
+        if(ns==rec.start&&ne==rec.end) return;
+        pushCommand<EditWallCommand>(ownerId, rec.start, rec.end, ns, ne);
+    } else {
+        AxisRecord rec; if(!document.findAxis(ownerId,&rec)) return;
+        QPointF ns=isStart?newPos:rec.start, ne=isStart?rec.end:newPos;
+        if(ownerType==GripOwnerType::HAxis){ ns.setY(rec.end.y()); ne.setY(rec.end.y()); }
+        else                               { ns.setX(rec.end.x()); ne.setX(rec.end.x()); }
+        if(ns==rec.start&&ne==rec.end) return;
+        pushCommand<EditAxisCommand>(ownerId, rec.start, rec.end, ns, ne);
+    }
 }
 
 void RoomLayoutPage::handleItemsMoved(QVector<QGraphicsItem *> items, QPointF delta)
@@ -426,10 +511,10 @@ void RoomLayoutPage::deleteSelectedItems()
 {
     QVector<WallRecord> w; QVector<SymbolRecord> s; QVector<TextRecord> t; QVector<AxisRecord> a;
     for(const SceneItemInfo &info : selectedSceneItemInfos(scene)){
-        if(info.kind == SceneItemKind::Wall)        { WallRecord   r; if(document.findWall(info.id,&r))   w<<r; }
-        else if(info.kind == SceneItemKind::Symbol) { SymbolRecord r; if(document.findSymbol(info.id,&r)) s<<r; }
-        else if(info.kind == SceneItemKind::Text)   { TextRecord   r; if(document.findText(info.id,&r))   t<<r; }
-        else if(info.kind == SceneItemKind::Axis)   { AxisRecord   r; if(document.findAxis(info.id,&r))   a<<r; }
+        if(info.kind == SceneItemKind::Wall)       { WallRecord   r; if(document.findWall(info.id,&r))   w<<r; }
+        else if(info.kind == SceneItemKind::Symbol){ SymbolRecord r; if(document.findSymbol(info.id,&r)) s<<r; }
+        else if(info.kind == SceneItemKind::Text)  { TextRecord   r; if(document.findText(info.id,&r))   t<<r; }
+        else if(info.kind == SceneItemKind::Axis)  { AxisRecord   r; if(document.findAxis(info.id,&r))   a<<r; }
     }
     if(w.isEmpty()&&s.isEmpty()&&t.isEmpty()&&a.isEmpty()) return;
     pushCommand<DeleteEditablesCommand>(w, s, t, a);
@@ -443,6 +528,72 @@ void RoomLayoutPage::unassignSelectedRoomLabel()
         pushCommand<UnassignRoomLabelCommand>(r);
         return;
     }
+}
+
+void RoomLayoutPage::copySelectedItems()
+{
+    clipboardWalls.clear();
+    clipboardSymbols.clear();
+    clipboardTexts.clear();
+    clipboardAxes.clear();
+    pasteCount = 0;
+
+    for (const SceneItemInfo &info : selectedSceneItemInfos(scene)) {
+        if (info.kind == SceneItemKind::Wall) {
+            WallRecord record;
+            if (document.findWall(info.id, &record)) clipboardWalls.append(record);
+        } else if (info.kind == SceneItemKind::Symbol) {
+            SymbolRecord record;
+            if (document.findSymbol(info.id, &record)) clipboardSymbols.append(record);
+        } else if (info.kind == SceneItemKind::Text) {
+            TextRecord record;
+            if (document.findText(info.id, &record)) clipboardTexts.append(record);
+        } else if (info.kind == SceneItemKind::Axis) {
+            AxisRecord record;
+            if (document.findAxis(info.id, &record)) clipboardAxes.append(record);
+        }
+    }
+}
+
+void RoomLayoutPage::pasteCopiedItems()
+{
+    if (clipboardWalls.isEmpty() && clipboardSymbols.isEmpty()
+        && clipboardTexts.isEmpty() && clipboardAxes.isEmpty()) {
+        return;
+    }
+
+    ++pasteCount;
+    const int floor = currentFloor();
+    const QPointF offset(20.0 * pasteCount, 20.0 * pasteCount);
+    QVector<WallRecord> walls = clipboardWalls;
+    QVector<SymbolRecord> symbols = clipboardSymbols;
+    QVector<TextRecord> texts = clipboardTexts;
+    QVector<AxisRecord> axes = clipboardAxes;
+
+    for (WallRecord &wall : walls) {
+        wall.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        wall.floor = floor;
+        wall.start += offset;
+        wall.end += offset;
+    }
+    for (SymbolRecord &symbol : symbols) {
+        symbol.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        symbol.floor = floor;
+        symbol.position += offset;
+    }
+    for (TextRecord &text : texts) {
+        text.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        text.floor = floor;
+        text.position += offset;
+    }
+    for (AxisRecord &axis : axes) {
+        axis.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        axis.floor = floor;
+        axis.start += offset;
+        axis.end += offset;
+    }
+
+    pushCommand<PasteEditablesCommand>(walls, symbols, texts, axes);
 }
 
 void RoomLayoutPage::addFloor()
@@ -467,8 +618,9 @@ QString RoomLayoutPage::layoutDataFilePath() const
 {
     const QString dataDirectory =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (!dataDirectory.isEmpty() && QDir().mkpath(dataDirectory))
+    if (!dataDirectory.isEmpty() && QDir().mkpath(dataDirectory)) {
         return QDir(dataDirectory).filePath(DemoDataFile);
+    }
     return QDir::current().filePath(DemoDataFile);
 }
 
@@ -492,13 +644,17 @@ void RoomLayoutPage::updateEditorStatus()
 void RoomLayoutPage::updateSelectionActions()
 {
     if (!editMode || currentTool != FloorPlanTool::Select) return;
-    bool hasDeletable = false, hasRoomLabel = false;
-    for(const SceneItemInfo &info : selectedSceneItemInfos(scene)){
+
+    bool hasDeletable = false;
+    bool hasRoomLabel = false;
+    for (const SceneItemInfo &info : selectedSceneItemInfos(scene)) {
         hasDeletable |= info.isDeletable();
         hasRoomLabel |= info.kind == SceneItemKind::RoomLabel;
     }
+
     ui->deleteButton->setEnabled(hasDeletable);
     ui->unassignRoomButton->setEnabled(hasRoomLabel);
+    refreshGrips();
 }
 
 void RoomLayoutPage::updateItemEditability()
@@ -506,6 +662,31 @@ void RoomLayoutPage::updateItemEditability()
     const bool ed=editMode&&currentTool==FloorPlanTool::Select;
     for(auto *item:scene->items()) setSceneItemEditable(item, ed);
     ui->deleteButton->setEnabled(false); ui->unassignRoomButton->setEnabled(false);
+    if(!ed){ activeGrips.clear(); }
+}
+
+void RoomLayoutPage::refreshGrips()
+{
+    for(auto *g:activeGrips){ if(g->scene()) scene->removeItem(g); delete g; }
+    activeGrips.clear();
+    if(!editMode||currentTool!=FloorPlanTool::Select) return;
+
+    const auto addGrip=[&](const QString &ownerId, GripOwnerType ot, GripRole role, QPointF ownPos, QPointF otherPos){
+        auto *g=new GripItem(ownerId,ot,role,otherPos);
+        g->setPos(ownPos); scene->addItem(g); activeGrips<<g; };
+
+    for(const SceneItemInfo &info : selectedSceneItemInfos(scene)){
+        if(info.kind == SceneItemKind::Wall){
+            WallRecord r; if(!document.findWall(info.id,&r)) continue;
+            addGrip(r.id,GripOwnerType::Wall,GripRole::StartPoint,r.start,r.end);
+            addGrip(r.id,GripOwnerType::Wall,GripRole::EndPoint,  r.end,  r.start);
+        } else if(info.kind == SceneItemKind::Axis){
+            AxisRecord r; if(!document.findAxis(info.id,&r)) continue;
+            const GripOwnerType ot=r.direction==AxisDirection::Horizontal?GripOwnerType::HAxis:GripOwnerType::VAxis;
+            addGrip(r.id,ot,GripRole::StartPoint,r.start,r.end);
+            addGrip(r.id,ot,GripRole::EndPoint,  r.end,  r.start);
+        }
+    }
 }
 
 QString RoomLayoutPage::suggestAxisLabel(AxisDirection dir) const

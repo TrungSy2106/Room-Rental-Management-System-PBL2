@@ -3,6 +3,7 @@
 
 #include "CommandStack.h"
 #include "FloorPlanDocument.h"
+#include "GripItem.h"
 #include "RoomLayoutView.h"
 
 #include <QColor>
@@ -37,15 +38,19 @@ private:
     void placeSymbol(SymbolType type, const QPointF &position);
     void placeTextAnnotation(const QPointF &position);
     void placeAxis(AxisDirection dir, const QPointF &start, const QPointF &end);
+    void handleGripReleased(const QString &ownerId, GripOwnerType ownerType, bool isStart, const QPointF &newPos);
     void handleItemsMoved(QVector<QGraphicsItem *> items, QPointF delta);
     void deleteSelectedItems();
     void unassignSelectedRoomLabel();
+    void copySelectedItems();
+    void pasteCopiedItems();
     void addFloor();
     void saveLayout();
     QString layoutDataFilePath() const;
     void updateEditorStatus();
     void updateSelectionActions();
     void updateItemEditability();
+    void refreshGrips();
     QString suggestAxisLabel(AxisDirection dir) const;
 
     Ui::RoomLayoutPage *ui;
@@ -55,6 +60,12 @@ private:
     QVector<int>        floors;
     FloorPlanDocument   document;
     FloorPlanTool       currentTool    = FloorPlanTool::Select;
+    QVector<GripItem*>  activeGrips;
+    QVector<WallRecord>   clipboardWalls;
+    QVector<SymbolRecord> clipboardSymbols;
+    QVector<TextRecord>   clipboardTexts;
+    QVector<AxisRecord>   clipboardAxes;
+    int  pasteCount    = 0;
     bool editMode      = false;
     bool documentLoaded= false;
     bool autosaveScheduled = false;
